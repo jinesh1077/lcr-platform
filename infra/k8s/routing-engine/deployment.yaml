@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: routing-engine
+  namespace: carrier-opt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: routing-engine
+  template:
+    metadata:
+      labels:
+        app: routing-engine
+    spec:
+      containers:
+        - name: routing-engine
+          image: carrier-opt/routing-engine:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8081
+          env:
+            - name: REDIS_HOST
+              value: redis
+            - name: REDIS_PORT
+              value: "6379"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+          resources:
+            limits:
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: routing-engine
+  namespace: carrier-opt
+spec:
+  ports:
+    - port: 8081
+  selector:
+    app: routing-engine

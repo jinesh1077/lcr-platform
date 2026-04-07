@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: carrier-config
+  namespace: carrier-opt
+data:
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: carrier_opt
+  POSTGRES_USER: carrier
+  REDIS_ADDR: redis:6379
+  KAFKA_BROKERS: kafka:9092
+  CLICKHOUSE_ADDR: clickhouse:9000
+  CLICKHOUSE_DB: carrier_opt
+  API_KEY: local-upload-key
+  ASR_THRESHOLD: "0.40"
+  CIRCUIT_BREAKER_TTL_SEC: "300"
+  AUDIT_THRESHOLD_PCT: "2.0"

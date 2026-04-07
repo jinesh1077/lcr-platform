@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telemetry
+  namespace: carrier-opt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: telemetry
+  template:
+    metadata:
+      labels:
+        app: telemetry
+    spec:
+      containers:
+        - name: telemetry
+          image: carrier-opt/telemetry:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8082
+          envFrom:
+            - configMapRef:
+                name: carrier-config
+            - secretRef:
+                name: carrier-secrets
+          env:
+            - name: CLICKHOUSE_ADDR
+              value: clickhouse:9000
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8082
+          resources:
+            limits:
+              memory: 96Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: telemetry
+  namespace: carrier-opt
+spec:
+  ports:
+    - port: 8082
+  selector:
+    app: telemetry

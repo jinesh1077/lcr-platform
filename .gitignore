@@ -1,0 +1,41 @@
+# Build
+target/
+bin/
+dist/
+*.jar
+*.class
+
+# Go
+services/*/vendor/
+services/traffic-simulator/traffic-simulator
+services/mock-carrier/mock-carrier
+services/telemetry/telemetry
+services/ingestion/ingestion
+services/ingestion/trie-builder
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Node
+dashboard/node_modules/
+dashboard/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Env
+.env
+.env.local
+
+# Logs
+*.log
+
+# Minikube
+.minikube/

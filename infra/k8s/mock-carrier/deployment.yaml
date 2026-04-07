@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-carrier
+  namespace: carrier-opt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-carrier
+  template:
+    metadata:
+      labels:
+        app: mock-carrier
+    spec:
+      containers:
+        - name: mock-carrier
+          image: carrier-opt/mock-carrier:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8083
+          env:
+            - name: CARRIER_ID
+              value: nexatel
+            - name: MOCK_ASR
+              value: "0.95"
+          resources:
+            limits:
+              memory: 32Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-carrier
+  namespace: carrier-opt
+spec:
+  ports:
+    - port: 8083
+  selector:
+    app: mock-carrier

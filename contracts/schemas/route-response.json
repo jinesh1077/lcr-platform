@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://carrier-optimization.local/schemas/route-response.json",
+  "title": "RouteResponse",
+  "type": "object",
+  "required": ["dialed_number", "candidates"],
+  "properties": {
+    "dialed_number": { "type": "string" },
+    "matched_prefix": { "type": "string" },
+    "candidates": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["carrier_id", "cost_per_min", "effective_cost", "rank"],
+        "properties": {
+          "carrier_id": { "type": "string" },
+          "cost_per_min": { "type": "number" },
+          "effective_cost": { "type": "number" },
+          "health_penalty": { "type": "number" },
+          "rank": { "type": "integer", "minimum": 1, "maximum": 3 }
+        }
+      }
+    }
+  }
+}

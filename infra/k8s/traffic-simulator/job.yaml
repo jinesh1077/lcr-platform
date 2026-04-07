@@ -1,0 +1,28 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: traffic-simulator
+  namespace: carrier-opt
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: simulator
+          image: carrier-opt/traffic-simulator:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: carrier-config
+          env:
+            - name: ROUTING_URL
+              value: http://routing-engine:8081/route
+            - name: MOCK_CARRIER_URL
+              value: http://mock-carrier:8083/simulate
+            - name: SIM_CALLS
+              value: "10000"
+            - name: SIM_CONCURRENCY
+              value: "100"
+          resources:
+            limits:
+              memory: 64Mi

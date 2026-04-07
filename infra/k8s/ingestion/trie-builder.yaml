@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trie-builder
+  namespace: carrier-opt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: trie-builder
+  template:
+    metadata:
+      labels:
+        app: trie-builder
+    spec:
+      containers:
+        - name: trie-builder
+          image: carrier-opt/trie-builder:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: carrier-config
+            - secretRef:
+                name: carrier-secrets
+          env:
+            - name: POSTGRES_DSN
+              value: postgres://carrier:$(POSTGRES_PASSWORD)@postgres:5432/carrier_opt?sslmode=disable
+          resources:
+            limits:
+              memory: 64Mi

@@ -1,0 +1,184 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: carrier_opt
+      POSTGRES_USER: carrier
+      POSTGRES_PASSWORD: carrier_secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U carrier -d carrier_opt"]
+      interval: 3s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  kafka:
+    image: apache/kafka:3.7.0
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24-alpine
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - ./infra/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+
+  ingestion:
+    build: ./services/ingestion
+    ports:
+      - "8080:8080"
+    environment:
+      POSTGRES_DSN: postgres://carrier:carrier_secret@postgres:5432/carrier_opt?sslmode=disable
+      REDIS_ADDR: redis:6379
+      KAFKA_BROKERS: kafka:9092
+      API_KEY: local-upload-key
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  trie-builder:
+    build:
+      context: ./services/ingestion
+      dockerfile: Dockerfile.trie-builder
+    environment:
+      POSTGRES_DSN: postgres://carrier:carrier_secret@postgres:5432/carrier_opt?sslmode=disable
+      REDIS_ADDR: redis:6379
+      KAFKA_BROKERS: kafka:9092
+    depends_on:
+      ingestion:
+        condition: service_healthy
+    restart: unless-stopped
+
+  routing-engine:
+    build: ./services/routing-engine
+    ports:
+      - "8081:8081"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  telemetry:
+    build: ./services/telemetry
+    ports:
+      - "8082:8082"
+    environment:
+      REDIS_ADDR: redis:6379
+      KAFKA_BROKERS: kafka:9092
+      CLICKHOUSE_ADDR: clickhouse:9000
+      CLICKHOUSE_DB: carrier_opt
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mock-carrier:
+    build: ./services/mock-carrier
+    ports:
+      - "8083:8083"
+    environment:
+      CARRIER_ID: nexatel
+      MOCK_ASR: "0.95"
+    restart: unless-stopped
+
+  traffic-simulator:
+    build: ./services/traffic-simulator
+    environment:
+      ROUTING_URL: http://routing-engine:8081/route
+      MOCK_CARRIER_URL: http://mock-carrier:8083/simulate
+      KAFKA_BROKERS: kafka:9092
+      SIM_CALLS: "1000"
+      SIM_CONCURRENCY: "50"
+    depends_on:
+      - routing-engine
+      - mock-carrier
+      - kafka
+    profiles:
+      - simulate
+
+  invoice-auditor:
+    build: ./services/invoice-auditor
+    environment:
+      POSTGRES_DSN: postgresql://carrier:carrier_secret@postgres:5432/carrier_opt
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: "8123"
+      CLICKHOUSE_DB: carrier_opt
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    profiles:
+      - audit
+
+  dashboard:
+    build: ./dashboard
+    ports:
+      - "3000:80"
+    depends_on:
+      - ingestion
+      - routing-engine
+      - telemetry
+      - mock-carrier
+    restart: unless-stopped
+
+volumes:
+  pgdata:

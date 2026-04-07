@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://carrier-optimization.local/schemas/rate-sheet.json",
+  "title": "NormalizedRateSheet",
+  "type": "object",
+  "required": ["vendor", "effective_at", "rates"],
+  "properties": {
+    "vendor": { "type": "string", "minLength": 1 },
+    "effective_at": { "type": "string", "format": "date-time" },
+    "rates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["prefix", "carrier_id", "cost_per_min"],
+        "properties": {
+          "prefix": { "type": "string", "pattern": "^[0-9]+$" },
+          "carrier_id": { "type": "string" },
+          "cost_per_min": { "type": "number", "minimum": 0 },
+          "expires_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}

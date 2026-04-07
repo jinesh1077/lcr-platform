@@ -1,0 +1,6 @@
+prefix,carrier_id,cost_per_min
+44,nexatel,0.02
+44,clearpath,0.03
+442,clearpath,0.01
+442,nexatel,0.015
+49,zenith,0.01

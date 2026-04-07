@@ -1,0 +1,29 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: invoice-auditor
+  namespace: carrier-opt
+spec:
+  schedule: "0 */6 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: auditor
+              image: carrier-opt/invoice-auditor:latest
+              imagePullPolicy: IfNotPresent
+              envFrom:
+                - configMapRef:
+                    name: carrier-config
+                - secretRef:
+                    name: carrier-secrets
+              env:
+                - name: POSTGRES_DSN
+                  value: postgresql://carrier:$(POSTGRES_PASSWORD)@postgres:5432/carrier_opt
+                - name: CLICKHOUSE_HOST
+                  value: clickhouse
+              resources:
+                limits:
+                  memory: 64Mi
