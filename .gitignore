@@ -5,7 +5,7 @@ dist/
 *.jar
 *.class
 
-# Go
+# Go (local `go build` binaries)
 services/*/vendor/
 services/traffic-simulator/traffic-simulator
 services/mock-carrier/mock-carrier
@@ -19,20 +19,25 @@ __pycache__/
 .venv/
 venv/
 *.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Node
 dashboard/node_modules/
 dashboard/dist/
 
-# IDE
+# IDE / OS
 .idea/
 .vscode/
+*.iml
 *.swp
 .DS_Store
 
-# Env
+# Env / secrets
 .env
-.env.local
+.env.*
+!.env.example
 
 # Logs
 *.log

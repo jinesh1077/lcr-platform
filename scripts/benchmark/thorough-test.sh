@@ -3,6 +3,7 @@
 set -uo pipefail
 
 COMPOSE="./scripts/compose.sh"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 API_KEY="${API_KEY:-local-upload-key}"
 INGESTION="${INGESTION_URL:-http://localhost:8080}"
 ROUTING="${ROUTING_URL:-http://localhost:8081/route}"
@@ -59,54 +60,8 @@ echo
 
 # --- Phase 2: Routing behavior ---
 echo "## Phase 2: Routing behavior"
-while IFS='|' read -r status name detail; do record "$status" "$name" "$detail"; done < <(python3 <<'PY'
-import json, urllib.request
-
-ROUTING = "http://localhost:8081/route"
-
-def route(num, region="GB"):
-    body = json.dumps({"dialedNumber": num, "defaultRegion": region}).encode()
-    req = urllib.request.Request(ROUTING, data=body, headers={"Content-Type": "application/json"}, method="POST")
-    with urllib.request.urlopen(req, timeout=10) as r:
-        return json.loads(r.read())
-
-# Determinism: same input → same output
-r0 = route("44207123456")
-stable = True
-for _ in range(30):
-    r = route("44207123456")
-    if r.get("matchedPrefix") != r0.get("matchedPrefix") or (r.get("candidates") or [{}])[0].get("carrierId") != (r0.get("candidates") or [{}])[0].get("carrierId"):
-        stable = False
-        break
-print(f"{'PASS' if stable else 'FAIL'}|Routing determinism (30 calls)|prefix={r0.get('matchedPrefix')} carrier={(r0.get('candidates') or [{}])[0].get('carrierId')}")
-
-# LPM battery
-cases = [
-    ("44207123456", "442", "clearpath"),
-    ("447700900123", "4477", "zenith"),
-    ("33123456789", "331", None),
-    ("5511987654321", "551", "nexatel"),
-]
-ok = 0
-for num, exp_prefix, exp_carrier in cases:
-    r = route(num)
-    p_ok = r.get("matchedPrefix") == exp_prefix
-    c = (r.get("candidates") or [{}])[0].get("carrierId")
-    c_ok = exp_carrier is None or c == exp_carrier
-    if p_ok and c_ok: ok += 1
-print(f"{'PASS' if ok == len(cases) else 'FAIL'}|LPM correctness battery|{ok}/{len(cases)} cases")
-
-# Ranking order: costs non-decreasing
-r = route("44207123456")
-costs = [c["effectiveCost"] for c in r.get("candidates", [])]
-ordered = all(costs[i] <= costs[i+1] for i in range(len(costs)-1))
-print(f"{'PASS' if ordered and len(costs) >= 2 else 'FAIL'}|Candidate cost ordering|{costs}")
-
-# Failover depth
-r = route("44207123456")
-n = len(r.get("candidates", []))
-print(f"{'PASS' if n >= 2 else 'FAIL'}|Multi-carrier failover depth|{n} candidates")
-PY
+while IFS='|' read -r status name detail; do record "$status" "$name" "$detail"; done < <(
+  python3 "$SCRIPT_DIR/thorough_test_checks.py" routing-behavior
 )
 echo
 
@@ -292,32 +247,7 @@ echo
 
 # --- Phase 8: Concurrent routing under mixed destinations ---
 echo "## Phase 8: Mixed-destination concurrent routing"
-MIXED=$(python3 <<'PY'
-import json, urllib.request, concurrent.futures, statistics, collections
-
-ROUTING = "http://localhost:8081/route"
-nums = ["447700900123","44207123456","33123456789","4915123456789","5511987654321"]
-
-def route_one(num):
-    body = json.dumps({"dialedNumber": num, "defaultRegion": "GB"}).encode()
-    req = urllib.request.Request(ROUTING, data=body, headers={"Content-Type":"application/json"}, method="POST")
-    t0 = __import__('time').perf_counter()
-    with urllib.request.urlopen(req, timeout=10) as r:
-        d = json.loads(r.read())
-    return (d.get("matchedPrefix"), (d.get("candidates") or [{}])[0].get("carrierId"), (__import__('time').perf_counter()-t0)*1000)
-
-with concurrent.futures.ThreadPoolExecutor(40) as ex:
-    results = list(ex.map(lambda i: route_one(nums[i % len(nums)]), range(400)))
-
-errors = sum(1 for r in results if r[0] is None)
-prefixes = collections.Counter(r[0] for r in results)
-lats = [r[2] for r in results]
-lats.sort()
-p95 = lats[int(len(lats)*0.95)]
-unique = len(prefixes)
-print(f"errors={errors}|unique_prefixes={unique}|p95_ms={p95:.0f}|top={prefixes.most_common(3)}")
-PY
-)
+MIXED=$(python3 "$SCRIPT_DIR/thorough_test_checks.py" concurrent-mixed)
 ERR=$(echo "$MIXED" | sed -n 's/.*errors=\([^|]*\).*/\1/p')
 P95=$(echo "$MIXED" | sed -n 's/.*p95_ms=\([^|]*\).*/\1/p')
 UPFX=$(echo "$MIXED" | sed -n 's/.*unique_prefixes=\([^|]*\).*/\1/p')
@@ -330,95 +260,15 @@ echo
 
 # --- Phase 9: Platform health & overview ---
 echo "## Phase 9: Platform health & ingestion overview"
-while IFS='|' read -r status name detail; do record "$status" "$name" "$detail"; done < <(python3 <<'PY'
-import json, urllib.request
-
-def get(url):
-    with urllib.request.urlopen(url, timeout=5) as r:
-        return r.status, r.read()
-
-checks = [
-    ("http://localhost:8080/health", "Ingestion"),
-    ("http://localhost:8081/health", "Routing"),
-    ("http://localhost:8082/health", "Telemetry"),
-    ("http://localhost:8083/health", "Mock carrier"),
-]
-up = 0
-for url, _ in checks:
-    try:
-        st, _ = get(url)
-        if st == 200: up += 1
-    except Exception:
-        pass
-print(f"{'PASS' if up == len(checks) else 'FAIL'}|Service health endpoints|{up}/{len(checks)} services up")
-
-try:
-    with urllib.request.urlopen("http://localhost:8080/api/overview", timeout=5) as r:
-        ov = json.loads(r.read())
-    buf = ov.get("trie_active_buffer", "?")
-    rates = ov.get("active_rates", 0)
-    carriers = ov.get("carriers", [])
-    ok = buf in ("A", "B") and rates > 0 and len(carriers) >= 3
-    print(f"{'PASS' if ok else 'FAIL'}|Ingestion overview|buffer={buf}, {rates} rates, {len(carriers)} carriers")
-except Exception as e:
-    print(f"FAIL|Ingestion overview|{e}")
-PY
+while IFS='|' read -r status name detail; do record "$status" "$name" "$detail"; done < <(
+  python3 "$SCRIPT_DIR/thorough_test_checks.py" platform-health
 )
 echo
 
 # --- Phase 10: Routing economics (logic metrics) ---
 echo "## Phase 10: Routing economics"
-while IFS='|' read -r status name detail; do record "$status" "$name" "$detail"; done < <(python3 <<'PY'
-import json, urllib.request
-
-ROUTING = "http://localhost:8081/route"
-
-def route(num, region="GB"):
-    body = json.dumps({"dialedNumber": num, "defaultRegion": region}).encode()
-    req = urllib.request.Request(ROUTING, data=body, headers={"Content-Type": "application/json"}, method="POST")
-    with urllib.request.urlopen(req, timeout=10) as r:
-        return json.loads(r.read())
-
-# UK LPM: 4477 cheaper than 442
-r_mobile = route("447700900123")
-r_london = route("44207123456")
-m_cost = (r_mobile.get("candidates") or [{}])[0].get("costPerMin", 0)
-l_cost = (r_london.get("candidates") or [{}])[0].get("costPerMin", 0)
-savings = round((l_cost - m_cost) / l_cost * 100, 1) if l_cost > m_cost else 0
-lpm_ok = m_cost < l_cost and r_mobile.get("matchedPrefix") == "4477"
-print(f"{'PASS' if lpm_ok else 'FAIL'}|UK LPM specificity|4477 ${m_cost:.4f} vs 442 ${l_cost:.4f} ({savings}% cheaper)")
-
-# Failover premium London
-cands = r_london.get("candidates", [])
-if len(cands) >= 2:
-    p, b = cands[0]["costPerMin"], cands[1]["costPerMin"]
-    prem = round((b - p) / p * 100, 1) if p > 0 else 0
-    print(f"{'PASS' if prem >= 40 else 'FAIL'}|Failover cost premium|backup {prem}% more than primary (${p:.4f} → ${b:.4f})")
-else:
-    print("FAIL|Failover cost premium|fewer than 2 candidates")
-
-# Regional spread
-regions = [
-    ("5511987654321", "BR"),
-    ("4915123456789", "DE"),
-    ("33123456789", "FR"),
-]
-costs = []
-for num, reg in regions:
-    r = route(num, reg)
-    costs.append((r.get("candidates") or [{}])[0].get("costPerMin", 0))
-lo, hi = min(costs), max(costs)
-ratio = round(hi / lo, 2) if lo > 0 else 0
-print(f"{'PASS' if ratio >= 1.5 else 'FAIL'}|Regional rate spread|${lo:.4f} – ${hi:.4f}/min ({ratio}×)")
-
-# E164 normalization: UK local format
-try:
-    r_local = route("02071234567", "GB")
-    norm_ok = r_local.get("dialedNumber", "").startswith("442")
-    print(f"{'PASS' if norm_ok else 'FAIL'}|E164 normalization|02071234567 → {r_local.get('dialedNumber', '?')}")
-except Exception as e:
-    print(f"FAIL|E164 normalization|{e}")
-PY
+while IFS='|' read -r status name detail; do record "$status" "$name" "$detail"; done < <(
+  python3 "$SCRIPT_DIR/thorough_test_checks.py" routing-economics
 )
 echo
 
@@ -479,19 +329,7 @@ else
 fi
 
 # Route still deterministic after rebuild
-DETERM=$(python3 -c "
-import json, urllib.request
-ROUTING='http://localhost:8081/route'
-def route():
-    body=json.dumps({'dialedNumber':'44207123456','defaultRegion':'GB'}).encode()
-    req=urllib.request.Request(ROUTING,data=body,headers={'Content-Type':'application/json'},method='POST')
-    with urllib.request.urlopen(req,timeout=10) as r:
-        d=json.loads(r.read())
-    return (d.get('matchedPrefix'), (d.get('candidates') or [{}])[0].get('carrierId'))
-r0=route()
-ok=all(route()==r0 for _ in range(10))
-print('ok' if ok else 'fail')
-" 2>/dev/null || echo fail)
+DETERM=$(python3 "$SCRIPT_DIR/thorough_test_checks.py" post-rebuild-determinism 2>/dev/null || echo fail)
 if [[ "$DETERM" == "ok" ]]; then
   record PASS "Post-rebuild routing stability" "10/10 identical results"
 else
