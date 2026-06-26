@@ -28,6 +28,7 @@ services:
 
   kafka:
     image: apache/kafka:3.7.0
+    restart: unless-stopped
     ports:
       - "9092:9092"
     environment:
@@ -42,6 +43,7 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_HEAP_OPTS: "-Xmx256m -Xms128m"
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
       interval: 5s
@@ -51,11 +53,14 @@ services:
 
   clickhouse:
     image: clickhouse/clickhouse-server:24-alpine
+    restart: unless-stopped
     ports:
       - "8123:8123"
       - "9000:9000"
     volumes:
       - ./infra/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql
+    environment:
+      CLICKHOUSE_MAX_MEMORY_USAGE: "536870912"
     healthcheck:
       test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
       interval: 5s
@@ -147,10 +152,16 @@ services:
       KAFKA_BROKERS: kafka:9092
       SIM_CALLS: "1000"
       SIM_CONCURRENCY: "50"
+      TRAFFIC_PROFILE: /scripts/seed/generated/traffic-profile.json
+    volumes:
+      - ./scripts/seed/generated:/scripts/seed/generated:ro
     depends_on:
-      - routing-engine
-      - mock-carrier
-      - kafka
+      routing-engine:
+        condition: service_started
+      mock-carrier:
+        condition: service_started
+      kafka:
+        condition: service_healthy
     profiles:
       - simulate
 

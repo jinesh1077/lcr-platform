@@ -1,9 +1,0 @@
-{
-  "rates": [
-    {"dest_prefix": "44", "provider": "nexatel", "price": 0.012},
-    {"dest_prefix": "447", "provider": "clearpath", "price": 0.011},
-    {"dest_prefix": "4477", "provider": "zenith", "price": 0.009},
-    {"dest_prefix": "33", "provider": "nexatel", "price": 0.015},
-    {"dest_prefix": "49", "provider": "zenith", "price": 0.018}
-  ]
-}

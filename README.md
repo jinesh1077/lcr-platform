@@ -150,20 +150,33 @@ curl -X POST http://localhost:8080/admin/trie/rebuild \
   -H "X-API-Key: local-upload-key"
 ```
 
-Re-run all seed files:
+`make seed` generates rate decks from the canonical telecom dataset (`data/lcr-dataset.json` — 223 ITU E.164 codes + 1,873 MCC/MNC operators) and uploads them:
 
 ```bash
-make seed
+make seed          # build dataset + generate + upload rates across 223 countries, 5 carriers
+make generate-data # regenerate dataset-derived CSV/JSON only (no upload)
 ```
 
-Seed data lives in `scripts/seed/`:
+| Source | Description |
+|--------|-------------|
+| `data/lcr-dataset.json` | **Canonical dataset** — E.164 country codes, MCC/MNC operators, ISO3→E.164 map |
+| `scripts/data/build-dataset.py` | Validates/refreshes dataset stats |
+| `scripts/seed/generate-rates.py` | Builds global + competitive rate decks from dataset |
+| `scripts/seed/generated/traffic-profile.json` | 94 weighted destinations for simulator |
 
-| File | Format | Vendor adapter |
-|------|--------|----------------|
-| `rates-default.csv` | CSV | default |
-| `rates-vendor-a.csv` | CSV | vendor_a |
-| `rates-vendor-b.json` | JSON | vendor_b |
-| `rates-lpm-demo.csv` | CSV | default (LPM textbook example) |
+`scripts/seed/rates-default.csv` is a small adapter demo for manual upload tests.
+
+### Benchmarks
+
+```bash
+make report            # full comprehensive metrics report
+make thorough-test     # integration correctness (32 tests)
+make data-driven-test  # 223-country coverage + traffic profile
+make platform-metrics
+make scenario-metrics
+make capacity-study
+make high-traffic-study
+```
 
 ### Simulate traffic
 
@@ -215,7 +228,11 @@ curl -X DELETE http://localhost:8080/admin/blocklist/nexatel \
 | `make build` | Build all Docker images |
 | `make up` | Start stack, wait for health, seed rates |
 | `make down` | Stop stack and remove volumes |
-| `make seed` | Upload sample rate sheets and rebuild trie |
+| `make seed` | Generate rates from E.164 data, upload, rebuild trie |
+| `make generate-data` | Regenerate dataset stats, rate decks, traffic profile |
+| `make report` | Run all benchmarks → `docs/thorough-test-report.md` |
+| `make thorough-test` | Integration test suite |
+| `make data-driven-test` | E.164 coverage + traffic profile tests |
 | `make route` | Test routing for `447700900123` |
 | `make simulate` | Run traffic simulator (1000 calls) |
 | `make audit` | Run invoice auditor job |
@@ -247,9 +264,15 @@ infra/
   k8s/                Kustomize manifests for Minikube
   clickhouse/         Schema init
 scripts/
-  seed/               Sample rate sheets and upload script
-  chaos/              Failure injection scripts
-contracts/schemas/    JSON schemas for rate sheets, CDRs, route responses
+  benchmark/          Metrics and integration test suites
+  data/               Dataset loader + build script
+  seed/               Rate generators and upload script
+  chaos/              Carrier failure injection (Minikube)
+data/
+  lcr-dataset.json    Canonical E.164 + MCC/MNC reference data
+docs/
+  architecture.md
+  thorough-test-report.md
 ```
 
 ## Minikube deployment

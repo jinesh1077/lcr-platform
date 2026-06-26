@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-go:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [ingestion, telemetry, mock-carrier, traffic-simulator]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Test ${{ matrix.service }}
+        working-directory: services/${{ matrix.service }}
+        run: |
+          go mod tidy
+          go build ./...
+          go test ./...
+
+  test-java:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - name: Build routing engine
+        working-directory: services/routing-engine
+        run: mvn test -B
+
+  test-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Lint auditor
+        working-directory: services/invoice-auditor
+        run: |
+          pip install -r requirements.txt
+          python -m py_compile auditor.py

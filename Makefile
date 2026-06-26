@@ -1,4 +1,6 @@
-.PHONY: help build test up down deploy minikube seed simulate chaos audit check-deps
+REPORT := docs/thorough-test-report.md
+
+.PHONY: help build test up down deploy minikube seed simulate audit check-deps report
 
 COMPOSE := ./scripts/compose.sh
 
@@ -15,6 +17,7 @@ help:
 	@echo "  make seed       - Upload sample rate sheets"
 	@echo "  make route      - Test routing for a UK number"
 	@echo "  make simulate   - Run traffic simulator"
+	@echo "  make report     - Regenerate comprehensive metrics report"
 	@echo "  make audit      - Run invoice auditor"
 	@echo "  make dashboard  - Start React dashboard (dev)"
 	@echo "  make minikube   - Start Minikube and deploy"
@@ -39,12 +42,32 @@ down:
 seed:
 	./scripts/seed/upload-rates.sh
 
+data-driven-test:
+	./scripts/benchmark/data-driven-test.sh
+	@echo "Run 'make report' to merge into $(REPORT)"
+
+high-traffic-study:
+	chmod +x ./scripts/benchmark/high-traffic-study.sh
+	./scripts/benchmark/high-traffic-study.sh
+	@echo "Run 'make report' to merge into $(REPORT)"
+
+report:
+	chmod +x ./scripts/benchmark/comprehensive-report.sh
+	./scripts/benchmark/comprehensive-report.sh $(REPORT)
+	@echo "Report: $(REPORT)"
+
+generate-data:
+	python3 scripts/data/build-dataset.py
+	python3 scripts/seed/generate-rates.py
+	python3 scripts/seed/generate-traffic-profile.py
+
 route:
 	curl -s -X POST $(ROUTING_URL)/route \
 		-H 'Content-Type: application/json' \
 		-d '{"dialedNumber":"447700900123","defaultRegion":"GB"}' | python3 -m json.tool
 
 simulate:
+	./scripts/wait-for-services.sh
 	$(COMPOSE) --profile simulate run --rm traffic-simulator
 
 audit:
@@ -56,6 +79,21 @@ dashboard:
 dashboard-up:
 	$(COMPOSE) up -d --build dashboard
 	@echo "Dashboard: http://localhost:3000"
+
+capacity-study:
+	./scripts/benchmark/capacity-study.sh
+	@echo "Run 'make report' to merge into $(REPORT)"
+
+thorough-test:
+	./scripts/benchmark/thorough-test.sh
+
+scenario-metrics:
+	./scripts/benchmark/scenario-metrics.sh
+	@echo "Run 'make report' to merge into $(REPORT)"
+
+platform-metrics:
+	./scripts/benchmark/platform-metrics.sh
+	@echo "Run 'make report' to merge into $(REPORT)"
 
 test-go:
 	cd services/ingestion && go test ./...

@@ -44,6 +44,47 @@ type cdrEvent struct {
 	CostTheoretical float64   `json:"cost_theoretical"`
 }
 
+type trafficDest struct {
+	DialedNumber  string  `json:"dialed_number"`
+	DefaultRegion string  `json:"default_region"`
+	Weight        float64 `json:"weight"`
+}
+
+type trafficProfile struct {
+	Destinations []trafficDest `json:"destinations"`
+}
+
+func loadTrafficProfile(path string) ([]trafficDest, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var p trafficProfile
+	if err := json.Unmarshal(data, &p); err != nil {
+		return nil, err
+	}
+	if len(p.Destinations) == 0 {
+		return nil, fmt.Errorf("empty profile")
+	}
+	return p.Destinations, nil
+}
+
+func pickDestination(dests []trafficDest) trafficDest {
+	var total float64
+	for _, d := range dests {
+		total += d.Weight
+	}
+	r := rand.Float64() * total
+	var acc float64
+	for _, d := range dests {
+		acc += d.Weight
+		if r <= acc {
+			return d
+		}
+	}
+	return dests[len(dests)-1]
+}
+
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
@@ -52,10 +93,19 @@ func main() {
 	kafkaBrokers := []string{env("KAFKA_BROKERS", "localhost:9092")}
 	totalCalls, _ := strconv.Atoi(env("SIM_CALLS", "1000"))
 	concurrency, _ := strconv.Atoi(env("SIM_CONCURRENCY", "50"))
+	profilePath := env("TRAFFIC_PROFILE", "/scripts/seed/generated/traffic-profile.json")
 
-	numbers := []string{
-		"447700900123", "447700900456", "33123456789", "4915123456789",
-		"34612345678", "393331234567", "5511987654321", "81312345678",
+	dests, err := loadTrafficProfile(profilePath)
+	if err != nil {
+		slog.Warn("traffic profile not loaded, using fallback", "error", err, "path", profilePath)
+		dests = []trafficDest{
+			{DialedNumber: "447700900123", DefaultRegion: "GB", Weight: 1},
+			{DialedNumber: "44207123456", DefaultRegion: "GB", Weight: 1},
+			{DialedNumber: "33123456789", DefaultRegion: "FR", Weight: 1},
+			{DialedNumber: "4915123456789", DefaultRegion: "DE", Weight: 1},
+		}
+	} else {
+		slog.Info("loaded traffic profile", "destinations", len(dests))
 	}
 
 	producer := mustProducer(kafkaBrokers)
@@ -74,8 +124,8 @@ func main() {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			num := numbers[rand.Intn(len(numbers))]
-			route, err := callRoute(routingURL, num)
+			dest := pickDestination(dests)
+			route, err := callRoute(routingURL, dest.DialedNumber, dest.DefaultRegion)
 			if err != nil || len(route.Candidates) == 0 {
 				mu.Lock()
 				failed++
@@ -86,7 +136,7 @@ func main() {
 			sim := callMock(mockURL)
 			cdr := cdrEvent{
 				CallID:           uuid.New().String(),
-				DialedNumber:     num,
+				DialedNumber:     dest.DialedNumber,
 				CarrierID:        carrier.CarrierID,
 				DurationSec:      sim.Duration,
 				Answered:         sim.Answered,
@@ -112,8 +162,11 @@ func main() {
 		"rps", float64(success)/elapsed.Seconds())
 }
 
-func callRoute(url, number string) (*routeResponse, error) {
-	body, _ := json.Marshal(routeRequest{DialedNumber: number, DefaultRegion: "GB"})
+func callRoute(url, number, region string) (*routeResponse, error) {
+	if region == "" {
+		region = "GB"
+	}
+	body, _ := json.Marshal(routeRequest{DialedNumber: number, DefaultRegion: region})
 	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -146,11 +199,17 @@ func callMock(url string) simResult {
 func mustProducer(brokers []string) sarama.SyncProducer {
 	cfg := sarama.NewConfig()
 	cfg.Producer.Return.Successes = true
-	p, err := sarama.NewSyncProducer(brokers, cfg)
-	if err != nil {
-		panic(fmt.Sprintf("kafka: %v", err))
+	var p sarama.SyncProducer
+	var err error
+	for attempt := 1; attempt <= 30; attempt++ {
+		p, err = sarama.NewSyncProducer(brokers, cfg)
+		if err == nil {
+			return p
+		}
+		slog.Warn("kafka producer not ready, retrying", "attempt", attempt, "error", err)
+		time.Sleep(2 * time.Second)
 	}
-	return p
+	panic(fmt.Sprintf("kafka: %v", err))
 }
 
 func env(k, d string) string {

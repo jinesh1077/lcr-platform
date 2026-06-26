@@ -37,5 +37,9 @@ dashboard/dist/
 # Logs
 *.log
 
+# Generated at seed time (regenerate via make generate-data)
+scripts/seed/generated/*
+!scripts/seed/generated/.gitkeep
+
 # Minikube
 .minikube/

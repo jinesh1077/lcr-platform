@@ -40,8 +40,20 @@ public class RoutingService {
 
     private String normalize(String raw, String region) throws NumberParseException {
         PhoneNumberUtil util = PhoneNumberUtil.getInstance();
-        String input = raw.startsWith("+") ? raw : "+" + raw.replaceAll("^0+", "");
-        Phonenumber.PhoneNumber num = util.parse(input, region != null ? region : "US");
+        String defaultRegion = region != null && !region.isBlank() ? region : "US";
+        String trimmed = raw.trim();
+        Phonenumber.PhoneNumber num;
+        if (trimmed.startsWith("+")) {
+            num = util.parse(trimmed, defaultRegion);
+        } else if (trimmed.startsWith("0")) {
+            num = util.parse(trimmed, defaultRegion);
+        } else {
+            try {
+                num = util.parse("+" + trimmed, defaultRegion);
+            } catch (NumberParseException e) {
+                num = util.parse(trimmed, defaultRegion);
+            }
+        }
         return util.format(num, PhoneNumberUtil.PhoneNumberFormat.E164).substring(1);
     }
 

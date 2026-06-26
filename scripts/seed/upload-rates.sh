@@ -3,6 +3,13 @@ set -euo pipefail
 
 API_KEY="${API_KEY:-local-upload-key}"
 BASE="${INGESTION_URL:-http://localhost:8080}"
+DIR="$(dirname "$0")"
+ROOT="$(cd "$DIR/../.." && pwd)"
+
+echo "Building dataset and generating rate decks ..."
+python3 "$ROOT/scripts/data/build-dataset.py"
+python3 "$DIR/generate-rates.py"
+python3 "$DIR/generate-traffic-profile.py"
 
 upload() {
   local vendor=$1 file=$2
@@ -14,18 +21,15 @@ upload() {
   echo
 }
 
-upload "vendor-default" "$(dirname "$0")/rates-default.csv"
-upload "vendor-a" "$(dirname "$0")/rates-vendor-a.csv"
-upload "vendor-lpm-demo" "$(dirname "$0")/rates-lpm-demo.csv"
+upload "vendor-global" "$DIR/generated/rates-global.csv"
+upload "vendor-competitive" "$DIR/generated/rates-competitive.csv"
 
-echo "Uploading vendor-b JSON..."
-curl -sf -X POST "$BASE/rates/upload?vendor=vendor-b" \
-  -H "X-API-Key: $API_KEY" \
-  -H "Content-Type: application/json" \
-  --data-binary "@$(dirname "$0")/rates-vendor-b.json"
-echo
+# LPM reference routes (nested UK prefixes)
+upload "vendor-lpm-demo" "$DIR/rates-lpm-demo.csv"
 
 echo "Triggering trie rebuild..."
 curl -sf -X POST "$BASE/admin/trie/rebuild" -H "X-API-Key: $API_KEY"
 echo
 echo "Seed complete."
+echo "Rate deck stats:"
+cat "$DIR/generated/rate-deck-stats.json"
