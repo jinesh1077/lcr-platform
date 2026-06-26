@@ -591,7 +591,7 @@ echo
   echo "| Concurrency | 400 mixed-destination parallel routes |"
   echo "| Platform | Service health, ingestion overview |"
   echo ""
-  echo "Reproduce: \`make thorough-test\` or \`make report\` for full metrics."
+  echo "Reproduce: \`make thorough-test\`"
 } > "$OUT"
 
 echo

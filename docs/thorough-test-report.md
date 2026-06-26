@@ -6,11 +6,12 @@
 
 Single reference for all measured platform metrics — integration correctness, data coverage, routing invariants, operational scenarios, capacity, and high-traffic behavior. Emergent economics (ASR, carrier share, avg cost/call) come from live routing + simulation, not hand-picked headline prices.
 
-**Reproduce everything:**
+**Reproduce tests:**
 
 ```bash
 make up && make seed
-make report
+make thorough-test
+make data-driven-test
 ```
 
 ---
@@ -616,21 +617,14 @@ Dashboard proxy (`http://localhost:3000`): `/ingestion/*`, `/routing/*`, `/telem
 
 ---
 
-## 11. How to re-run benchmarks
+## 11. How to re-run tests
 
 | Command | What it measures |
 |---------|------------------|
-| `make report` | Regenerate this comprehensive report |
 | `make thorough-test` | Integration correctness (32 tests) |
 | `make data-driven-test` | E.164 + traffic profile coverage |
-| `make platform-metrics` | Routing invariants & latency |
-| `make scenario-metrics` | 8 operational scenarios |
-| `make capacity-study` | Concurrency sweep & CPU ROI |
-| `make high-traffic-study` | 150k+ call load test |
 | `make simulate` | Quick 1,000-call end-to-end run |
 | `make route` | Single routing lookup |
-
-Tune high-traffic scale: `HT_WAVE1_CALLS=200000 HT_WAVE2_CALLS=100000 make high-traffic-study`
 
 ---
 

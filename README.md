@@ -169,14 +169,12 @@ make generate-data # regenerate dataset-derived CSV/JSON only (no upload)
 ### Benchmarks
 
 ```bash
-make report            # full comprehensive metrics report
-make thorough-test     # integration correctness (32 tests)
-make data-driven-test  # 223-country coverage + traffic profile
-make platform-metrics
-make scenario-metrics
-make capacity-study
-make high-traffic-study
+make thorough-test      # integration suite (32 checks)
+make data-driven-test   # E.164 coverage + traffic profile
+make simulate           # quick end-to-end smoke (1000 calls)
 ```
+
+Historical metrics snapshot: `docs/thorough-test-report.md`
 
 ### Simulate traffic
 
@@ -230,8 +228,7 @@ curl -X DELETE http://localhost:8080/admin/blocklist/nexatel \
 | `make down` | Stop stack and remove volumes |
 | `make seed` | Generate rates from E.164 data, upload, rebuild trie |
 | `make generate-data` | Regenerate dataset stats, rate decks, traffic profile |
-| `make report` | Run all benchmarks → `docs/thorough-test-report.md` |
-| `make thorough-test` | Integration test suite |
+| `make thorough-test` | Integration test suite (32 checks) |
 | `make data-driven-test` | E.164 coverage + traffic profile tests |
 | `make route` | Test routing for `447700900123` |
 | `make simulate` | Run traffic simulator (1000 calls) |

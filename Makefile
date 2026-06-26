@@ -1,6 +1,4 @@
-REPORT := docs/thorough-test-report.md
-
-.PHONY: help build test up down deploy minikube seed simulate audit check-deps report
+.PHONY: help build test up down deploy minikube seed simulate audit check-deps
 
 COMPOSE := ./scripts/compose.sh
 
@@ -10,18 +8,19 @@ ROUTING_URL ?= http://localhost:8081
 
 help:
 	@echo "LCR Platform"
-	@echo "  make check-deps - Verify docker, compose, and daemon"
-	@echo "  make build      - Build all Docker images"
-	@echo "  make up         - Start local stack (docker compose)"
-	@echo "  make down       - Stop local stack"
-	@echo "  make seed       - Upload sample rate sheets"
-	@echo "  make route      - Test routing for a UK number"
-	@echo "  make simulate   - Run traffic simulator"
-	@echo "  make report     - Regenerate comprehensive metrics report"
-	@echo "  make audit      - Run invoice auditor"
-	@echo "  make dashboard  - Start React dashboard (dev)"
-	@echo "  make minikube   - Start Minikube and deploy"
-	@echo "  make deploy     - Deploy to Minikube"
+	@echo "  make check-deps      - Verify docker, compose, and daemon"
+	@echo "  make build           - Build all Docker images"
+	@echo "  make up              - Start local stack (docker compose)"
+	@echo "  make down            - Stop local stack"
+	@echo "  make seed            - Upload rate sheets and rebuild trie"
+	@echo "  make route           - Test routing for a UK number"
+	@echo "  make simulate        - Run traffic simulator"
+	@echo "  make thorough-test   - Integration test suite (32 checks)"
+	@echo "  make data-driven-test - E.164 coverage + traffic profile"
+	@echo "  make audit           - Run invoice auditor"
+	@echo "  make dashboard       - Start React dashboard (dev)"
+	@echo "  make minikube        - Start Minikube and deploy"
+	@echo "  make deploy          - Deploy to Minikube"
 
 check-deps:
 	@./scripts/compose.sh version
@@ -42,24 +41,16 @@ down:
 seed:
 	./scripts/seed/upload-rates.sh
 
-data-driven-test:
-	./scripts/benchmark/data-driven-test.sh
-	@echo "Run 'make report' to merge into $(REPORT)"
-
-high-traffic-study:
-	chmod +x ./scripts/benchmark/high-traffic-study.sh
-	./scripts/benchmark/high-traffic-study.sh
-	@echo "Run 'make report' to merge into $(REPORT)"
-
-report:
-	chmod +x ./scripts/benchmark/comprehensive-report.sh
-	./scripts/benchmark/comprehensive-report.sh $(REPORT)
-	@echo "Report: $(REPORT)"
-
 generate-data:
 	python3 scripts/data/build-dataset.py
 	python3 scripts/seed/generate-rates.py
 	python3 scripts/seed/generate-traffic-profile.py
+
+thorough-test:
+	./scripts/benchmark/thorough-test.sh
+
+data-driven-test:
+	./scripts/benchmark/data-driven-test.sh
 
 route:
 	curl -s -X POST $(ROUTING_URL)/route \
@@ -79,21 +70,6 @@ dashboard:
 dashboard-up:
 	$(COMPOSE) up -d --build dashboard
 	@echo "Dashboard: http://localhost:3000"
-
-capacity-study:
-	./scripts/benchmark/capacity-study.sh
-	@echo "Run 'make report' to merge into $(REPORT)"
-
-thorough-test:
-	./scripts/benchmark/thorough-test.sh
-
-scenario-metrics:
-	./scripts/benchmark/scenario-metrics.sh
-	@echo "Run 'make report' to merge into $(REPORT)"
-
-platform-metrics:
-	./scripts/benchmark/platform-metrics.sh
-	@echo "Run 'make report' to merge into $(REPORT)"
 
 test-go:
 	cd services/ingestion && go test ./...
